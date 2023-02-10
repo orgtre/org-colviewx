@@ -35,11 +35,12 @@
   "Like org-link but without underline.")
 
 ;; #TODO this is not in effect after switch to dark mode
-(set-face-attribute 'org-column nil :background nil)
-(set-face-attribute 'org-column t :background nil)
+(set-face-attribute 'org-column nil :background 'unspecified)
+(set-face-attribute 'org-column t :background 'unspecified)
 (set-face-attribute 'org-column-title nil
-                    :background nil :inherit 'org-level-1 :underline nil)
-(set-face-attribute 'org-column-title t :background nil)
+                    :background 'unspecified
+                    :inherit 'org-level-1 :underline nil)
+(set-face-attribute 'org-column-title t :background 'unspecified)
 
 
 ;; * org-column hooks
@@ -106,16 +107,22 @@
   (interactive)
   (when (get-char-property (point) 'org-columns-key)
     (setq org-colviewx-last-column (org-current-text-column)))
-  (org-speed-move-safe 'org-next-visible-heading)
-  (forward-char org-colviewx-last-column))
-  
+  (let ((pos (point)))
+    (call-interactively 'org-next-visible-heading)
+    (if (and (bolp) (org-at-heading-p))
+        (forward-char org-colviewx-last-column)
+      (goto-char pos))))
+
 
 (defun org-colviewx-previous-item ()
   (interactive)
   (when (get-char-property (point) 'org-columns-key)
     (setq org-colviewx-last-column (org-current-text-column)))
-  (org-speed-move-safe 'org-previous-visible-heading)
-  (forward-char org-colviewx-last-column))
+  (let ((pos (point)))
+    (call-interactively 'org-previous-visible-heading)
+    (if (and (bolp) (org-at-heading-p))
+        (forward-char org-colviewx-last-column)
+      (goto-char pos))))
 
 
 (defun org-colviewx-beginning-of-contents (&optional end)
@@ -158,17 +165,16 @@ unfolded if that is required for toggling its visbility.
 When ARG is `off' always reveal the drawer.
 When ARG is any other non-nil value, hide it.
 When called interactively one `\\[universal-argument]' prefix
-sets ARG to `t', while two set it to `off'."
+sets ARG to t, while two set it to `off'."
   (interactive "P")
-  (when (called-interactively-p)
+  (when (called-interactively-p 'any)
     (cond
      ((equal arg '(4)) (setq arg t))
      ((equal arg '(16)) (setq arg 'off))))
   (save-excursion
     (org-back-to-heading)
     (let ((h-folded-p (org-fold-folded-p (line-end-position)))
-          (d-pos (car (org-get-property-block)))
-          d-folded-p)
+          (d-pos (car (org-get-property-block))))
       (when h-folded-p
         (org-fold-heading nil t))
       (when d-pos
@@ -179,6 +185,128 @@ sets ARG to `t', while two set it to `off'."
           (org-fold-hide-drawer-toggle (or arg 'off)))
          ((not h-folded-p)
           (org-fold-hide-drawer-toggle (or arg nil))))))))
+
+
+;; ** Connected vertical divider lines
+
+(set-face-attribute 'nobreak-space nil :underline nil)
+(set-face-attribute 'nobreak-space nil :inherit 'org-level-1)
+
+(defcustom org-columns-separator
+  (propertize " " 'face
+                      (list
+                       ;;:inherit 'org-level-1
+                       :inverse-video t
+                       :family "Arial"
+                       ))
+  "Separator to use between columns."
+  :type 'string)
+
+
+(defun org-columns--display-here-title ()
+  "Overlay the newline before the current line with the table title."
+  (interactive)
+  (let ((title "")
+	(linum-offset (org-line-number-display-width 'columns))
+        (space (propertize " " 'face 'org-column-title))
+	(i 0))
+    (dolist (column org-columns-current-fmt-compiled)
+      (pcase column
+	(`(,property ,name . ,_)
+	 (let* ((width (aref org-columns-current-maxwidths i))
+		(fmt (format "%%-%d.%ds " width width)))
+	   (setq title (concat title
+                               (org-add-props
+                                   (format fmt (or name property))
+                                   nil 'face 'org-column-title)
+                               org-columns-separator space)))))
+      (cl-incf i))
+    (setq-local org-previous-header-line-format header-line-format)
+    (setq org-columns-full-header-line-format
+	  (concat
+	   (org-add-props space nil
+             'display `(space :align-to ,linum-offset))
+           (substring title 0 -1)))
+    (setq org-columns-previous-hscroll -1)
+    (add-hook 'post-command-hook #'org-columns-hscroll-title nil 'local)))
+
+
+(defun org-columns--display-here (columns &optional dateline)
+  "Overlay the current line with column display.
+COLUMNS is an alist (SPEC VALUE DISPLAYED).  Optional argument
+DATELINE is non-nil when the face used should be
+`org-agenda-column-dateline'."
+  (when (and (ignore-errors (require 'face-remap))
+             org-columns-header-line-remap)
+    (setq org-columns-header-line-remap
+	  (face-remap-add-relative 'header-line '(:inherit default))))
+  (save-excursion
+    (beginning-of-line)
+    (let* ((level-face (and (looking-at "\\(\\**\\)\\(\\* \\)")
+			    (org-get-level-face 2)))
+	   (ref-face (or level-face
+			 (and (eq major-mode 'org-agenda-mode)
+			      (org-get-at-bol 'face))
+			 'default))
+	   (color (list :foreground (face-attribute ref-face :foreground)))
+	   (font (list :family (face-attribute 'default :family)))
+	   (face (list color font 'org-column ref-face))
+	   (face1 (list color font 'org-agenda-column-dateline ref-face)))
+      ;; Each column is an overlay on top of a character.  So there has
+      ;; to be at least as many characters available on the line as
+      ;; columns to display.
+      (let ((columns (length org-columns-current-fmt-compiled))
+	    (chars (- (line-end-position) (line-beginning-position))))
+	(when (> columns chars)
+	  (save-excursion
+	    (end-of-line)
+	    (let ((inhibit-read-only t))
+	      (insert (make-string (- columns chars) ?\s))))))
+      ;; Display columns.  Create and install the overlay for the
+      ;; current column on the next character.
+      (let ((i 0)
+	    (last (1- (length columns))))
+	(dolist (column columns)
+	  (pcase column
+	    (`(,spec ,original ,value)
+	     (let* ((property (car spec))
+		    (width (aref org-columns-current-maxwidths i))
+		    (fmt (format (if (= i last) "%%-%d.%ds %s"
+				   "%%-%d.%ds %s ")
+				 width width org-columns-separator))
+		    (ov (org-columns--new-overlay
+			 (point) (1+ (point))
+			 (org-columns--overlay-text
+			  value fmt width property original)
+			 (if dateline face1 face))))
+	       (overlay-put ov 'keymap org-columns-map)
+	       (overlay-put ov 'org-columns-key property)
+	       (overlay-put ov 'org-columns-value original)
+	       (overlay-put ov 'org-columns-value-modified value)
+	       (overlay-put ov 'org-columns-format fmt)
+	       (overlay-put ov 'line-prefix "")
+	       (overlay-put ov 'wrap-prefix "")
+	       (forward-char))))
+	  (cl-incf i)))
+      ;; Make the rest of the line disappear.
+      (let ((ov (org-columns--new-overlay (point) (line-end-position))))
+	(overlay-put ov 'invisible t)
+	(overlay-put ov 'keymap org-columns-map)
+	(overlay-put ov 'line-prefix "")
+	(overlay-put ov 'wrap-prefix ""))
+      (let ((ov (make-overlay (1- (line-end-position))
+			      (line-beginning-position 2))))
+	(overlay-put ov 'keymap org-columns-map)
+	(push ov org-columns-overlays))
+      (with-silent-modifications
+	(let ((inhibit-read-only t))
+	  (put-text-property
+	   (line-end-position 0)
+	   (line-beginning-position 2)
+	   'read-only
+	   (substitute-command-keys
+	    (concat "Type \\<org-columns-map>`\\[org-columns-edit-value]'"
+                    " to edit property"))))))))
 
 
 ;; * Editing
@@ -425,3 +553,7 @@ reverse order."
 (org-defkey org-columns-map "=" #'org-columns-next-allowed-value)
 (org-defkey org-columns-map "-" #'org-columns-previous-allowed-value)
 
+
+(provide 'org-colview)
+
+;;; org-colviewx.el ends here
