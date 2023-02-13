@@ -51,13 +51,13 @@
 (defvar org-colviewx-quit-hook nil
   "Hook for functions attaching themselves to `org-columns-quit'.")
 
-(defun org-colviewx-org-columns-advice (&rest r)
+(defun org-colviewx-org-columns-advice (&rest _r)
   "Run `org-colviewx-hook'."
   (run-hooks 'org-colviewx-hook))
 
 (advice-add 'org-columns :after #'org-colviewx-org-columns-advice)
 
-(defun org-colviewx-org-columns-quit-advice (&rest r)
+(defun org-colviewx-org-columns-quit-advice (&rest _r)
   "Run `org-colviewx-quit-hook'."
     (run-hooks 'org-colviewx-quit-hook))
 
@@ -87,12 +87,14 @@
 
 (defun org-colviewx-setup ()
   ;; disable speed commands as they conflict with org-columns:
+  (org-colviewx-toggle-top 1)
   (setq-local org-use-speed-commands nil)
   ;; disable as this behaves strangely in column view:
   (setq-local org-special-ctrl-a/e (cons nil t)))
 
 
 (defun org-colviewx-teardown ()
+  (org-colviewx-toggle-top -1)
   (kill-local-variable 'org-use-speed-commands)
   (kill-local-variable 'org-special-ctrl-a/e))
 
@@ -103,7 +105,31 @@
 
 ;; * Navigating
 
+
+(defun org-colviewx-forward ()
+  "Move point one cell right.
+Ensure it stays in the column view table."
+  (interactive)
+  (when (> (length org-columns-current-fmt-compiled)
+           (1+ (org-current-text-column)))
+    (forward-char)))
+
+
+(defun org-colviewx-backward ()
+  "Move point one cell left.
+Ensure it stays in the column view table."
+  (interactive)
+  (unless (= (current-column) 0)
+    (backward-char)))
+
+
+(defvar org-colviewx-last-column nil
+  "Stores the last column view column of point.")
+
+
 (defun org-colviewx-next-item ()
+  "Move point one item (row) down.
+Ensure it stays in the column view table and in the same column."
   (interactive)
   (when (get-char-property (point) 'org-columns-key)
     (setq org-colviewx-last-column (org-current-text-column)))
@@ -115,6 +141,8 @@
 
 
 (defun org-colviewx-previous-item ()
+  "Move point one item (row) up.
+Ensure it stays in the column view table and in the same column."
   (interactive)
   (when (get-char-property (point) 'org-columns-key)
     (setq org-colviewx-last-column (org-current-text-column)))
@@ -131,24 +159,24 @@ Skips meta-data. With END go to last non-whitespace character instead."
   (interactive "P")
   (org-end-of-meta-data t)
   (if (org-at-heading-p)
-      (previous-line)
+      (forward-line -1)
     (when end
       (if (re-search-forward "[ \n]*\n\\*" nil t)
           (goto-char (match-beginning 0))
         (org-end-of-subtree)
         (re-search-backward "[^ \n]")
         (goto-char (match-end 0)))))
-  (org-show-context))
+  (org-fold-show-context))
 
 
-(defvar org-colviewx-last-column nil)
-
-(defun org-colviewx-save-column (&rest r)
+(defun org-colviewx-save-column (&rest _r)
   (setq org-colviewx-last-column (org-current-text-column)))
 
-(defun org-colviewx-goto-last-column (&rest r)
+
+(defun org-colviewx-goto-last-column (&rest _r)
   (when org-colviewx-last-column
     (move-to-column org-colviewx-last-column)))
+
 
 (defun org-colviewx-beginning-of-contents+ (&optional end)
   (interactive)
@@ -158,10 +186,50 @@ Skips meta-data. With END go to last non-whitespace character instead."
 
 ;; * Viewing
 
+(defun org-colviewx-toggle-top (&optional arg)
+  "Toggle visibility of the top of the buffer.
+
+The top refers to the part before the first headline and it is
+hidden using `narrow-to-region'. When revealing the top, scroll
+the window down the number of lines revealed or as far as allowed
+without moving point.
+
+Unconditionally hide the top when ARG is larger than zero;
+unconditionally reveal it when ARG is smaller than zero."
+  (interactive)
+  (if (and (> (point-min) 1)
+           (or (not arg) (< arg 0)))
+      (let ((revealed-lines (count-screen-lines 1 (point-min))))
+        (widen)
+        (save-excursion
+          (scroll-down
+           (min revealed-lines
+                (- (window-text-height)
+                   (count-screen-lines (point) (window-start))
+                   scroll-margin 2)))))
+    (when (and (= (point-min) 1)
+               (or (not arg) (> arg 0)))
+      (narrow-to-region (save-excursion
+                          (goto-char 1)
+                          (re-search-forward org-outline-regexp-bol nil t)
+                          (pos-bol))
+                        (point-max)))))
+
+
+(defvar org-colviewx-entry-folded-at-last-toggle-drawer t
+  "Used by `org-colviewx-entry-toggle-drawer'.")
+
+
 (defun org-colviewx-entry-toggle-drawer (&optional arg)
   "Toggle visibility of the property drawer of entry at point.
+
 The entry itself is always unfolded, but the drawer is only
 unfolded if that is required for toggling its visbility.
+
+When this command is called twice in a row and the entry was
+folded at the first of these calls, the entry is folded again
+on the second call.
+
 When ARG is `off' always reveal the drawer.
 When ARG is any other non-nil value, hide it.
 When called interactively one `\\[universal-argument]' prefix
@@ -184,13 +252,24 @@ sets ARG to t, while two set it to `off'."
          (h-folded-p
           (org-fold-hide-drawer-toggle (or arg 'off)))
          ((not h-folded-p)
-          (org-fold-hide-drawer-toggle (or arg nil))))))))
+          (if (and (equal last-command 'org-colviewx-entry-toggle-drawer)
+                   org-colviewx-entry-folded-at-last-toggle-drawer)
+              (org-fold-hide-entry)
+            (org-fold-hide-drawer-toggle (or arg nil))))))
+      (setq org-colviewx-entry-folded-at-last-toggle-drawer
+            h-folded-p))))
 
 
 ;; ** Connected vertical divider lines
 
+;;#TODO ideally this patch would be integrated into org-colview.el
+
+;;#TODO set this in the proper place
 (set-face-attribute 'nobreak-space nil :underline nil)
 (set-face-attribute 'nobreak-space nil :inherit 'org-level-1)
+;; hair/thin space displays with the hardcoded face nobreak-space
+;; so we need to adapt it by removing the underline and changing the color
+
 
 (defcustom org-columns-separator
   (propertize " " 'face
@@ -199,7 +278,9 @@ sets ARG to t, while two set it to `off'."
                        :inverse-video t
                        :family "Arial"
                        ))
-  "Separator to use between columns."
+  "Separator to use between columns.
+Suggested values include |, hair space, thin space, and space."
+  :group 'org-properties
   :type 'string)
 
 
@@ -311,21 +392,26 @@ DATELINE is non-nil when the face used should be
 
 ;; * Editing
 
+(defun org-colviewx-redo-row ()
+  "Construct the column display of the current row again."
+  (interactive)
+  (let ((inhibit-read-only t))
+    ;; need to explicitly delete, otherwise value not always updated
+    (mapc #'delete-overlay (overlays-in (line-beginning-position)
+                                        (line-end-position)))
+    (org-columns--display-here
+     (save-excursion (org-columns--collect-values)))))
+
+
 (defun org-colviewx-edit-value (&optional key)
   "Edit property value, but update only current row."
   (interactive)
-  (let* ((col (current-column))
-         (key (or key (get-char-property (point) 'org-columns-key)))
+  (let* ((key (or key (get-char-property (point) 'org-columns-key)))
          (value (get-char-property (point) 'org-columns-value))
          (nval (string-trim (org-read-property-value key (point)))))
     (when (not (equal nval value))
       (org-entry-put (point) key nval)
-      (let ((inhibit-read-only t))
-        ;; need to explicitly delete, otherwise value not always updated
-        (mapc #'delete-overlay (overlays-in (line-beginning-position)
-                                            (line-end-position)))
-        (org-columns--display-here
-         (save-excursion (org-columns--collect-values)))))))
+      (org-colviewx-redo-row))))
 
 
 (defun org-colviewx-copy-value ()
@@ -375,7 +461,7 @@ DATELINE is non-nil when the face used should be
 
 ;; * Transforming
 
-(defun org-colviewx-transform-links (column-title value)
+(defun org-colviewx-transform-links (_column-title value)
   "Transforms values containing Org links."
   (when (and (string-prefix-p "[[" value)
              (string-suffix-p "]]" value))
@@ -393,6 +479,14 @@ DATELINE is non-nil when the face used should be
       (put-text-property 0 (length value) 'keymap
                          '(keymap (mouse-1 . org-columns-open-link)) value)
       value)))
+
+
+(defconst org-colviewx-string-number-regex
+  (concat "^[+-]?\\(?:[0-9]+\\(?:[.][0-9]*\\)?\\(?:e[+-]?[0-9]+\\)?"
+          "\\|[.][0-9]+\\(?:e[+-]?[0-9]+\\)?\\)$")
+  "Matches integers and floats with exponent.
+This allows for leading and trailing decimal point, leading zeros in base,
+leading zeros in exponent, and + signs.")
 
 
 (defun org-colviewx-transform-numbers (column-title value)
@@ -417,14 +511,6 @@ DATELINE is non-nil when the face used should be
            value))))))
 
 
-(defconst org-colviewx-string-number-regex
-  (concat "^[+-]?\\(?:[0-9]+\\(?:[.][0-9]*\\)?\\(?:e[+-]?[0-9]+\\)?"
-          "\\|[.][0-9]+\\(?:e[+-]?[0-9]+\\)?\\)$")
-  "Matches integers and floats with exponent.
-This allows for leading and trailing decimal point, leading zeros in base,
-leading zeros in exponent, and + signs.")
-
-
 (defun org-colviewx-transform-content (column-title value)
   (when (equal column-title "CONTENT")
     (org-back-to-heading)
@@ -443,9 +529,9 @@ leading zeros in exponent, and + signs.")
 (defun org-colviewx-display-transformer (column-title value)
   "Modifies the value to display in column view."
   (or
-   ;; (org-colviewx-display-transform-links column-title value)
+   ;; (org-colviewx-transform-links column-title value)
    ;; (org-colviewx-transform-numbers column-title value)
-   ;; (org-colviewx-display-transform-content column-title value)   
+   (org-colviewx-transform-content column-title value)
    ))
 
 (setq org-columns-modify-value-for-display-function
@@ -496,14 +582,15 @@ reverse order."
   (let ((colname (get-char-property (point) 'org-columns-key))
         (colnum (current-column))
         (inhibit-read-only t))
-    (org-columns-goto-top-level)
-    ;;(org-sort-entries nil (if arg ?R ?r) nil nil colname)
-    (org-sort-entries nil (if arg ?F ?f)
-                      (lambda () (org-entry-get nil colname))
-                      #'org-colviewx-sort-function)
-    (org-columns)
-    (outline-hide-sublevels
-     (1+ (org-current-level)))
+    (org-with-wide-buffer
+     (org-columns-goto-top-level)
+     ;;(org-sort-entries nil (if arg ?R ?r) nil nil colname)
+     (org-sort-entries nil (if arg ?F ?f)
+                       (lambda () (org-entry-get nil colname))
+                       #'org-colviewx-sort-function)
+     (org-columns)
+     (outline-hide-sublevels
+      (1+ (org-current-level))))
     (move-to-column colnum)))
 
 (defun org-colviewx-sort-reverse ()
@@ -514,32 +601,30 @@ reverse order."
 
 ;; * Keybindings
 
-(org-defkey org-columns-map "^" #'org-colviewx-sort)
-(org-defkey org-columns-map [(meta down)] #'org-colviewx-sort)
-(org-defkey org-columns-map [(meta up)] #'org-colviewx-sort-reverse)
-
-(org-defkey org-columns-map "j" #'org-goto)
-
 ;; viewing
 (org-defkey org-columns-map "c" #'org-cycle)
 (org-defkey org-columns-map "C" #'org-shifttab)
 (org-defkey org-columns-map "d" #'org-colviewx-entry-toggle-drawer)
-
+(org-defkey org-columns-map "t" #'org-colviewx-toggle-top)
 
 ;; navigating
-(org-defkey org-columns-map "f"
-	    (lambda () (interactive) (goto-char (1+ (point)))))
-
-(org-defkey org-columns-map "b" #'backward-char)
+(org-defkey org-columns-map "f" #'org-colviewx-forward)
+(org-defkey org-columns-map [right] #'org-colviewx-forward)
+(org-defkey org-columns-map "b" #'org-colviewx-backward)
+(org-defkey org-columns-map [left] #'org-colviewx-backward)
 
 (org-defkey org-columns-map "n" #'org-colviewx-next-item)
+(org-defkey org-columns-map [down] #'org-colviewx-next-item)
 (org-defkey org-columns-map "p" #'org-colviewx-previous-item)
+(org-defkey org-columns-map [up] #'org-colviewx-previous-item)
 
 (org-defkey org-mode-map (kbd "C-c C-.") #'org-colviewx-beginning-of-contents)
 (org-defkey org-columns-map "." #'org-colviewx-beginning-of-contents+)
 
+(org-defkey org-columns-map "j" #'org-goto)
 
 ;; editing
+(org-defkey org-columns-map "r" #'org-colviewx-redo-row)
 (org-defkey org-columns-map "e" #'org-colviewx-edit-value)
 (org-defkey org-columns-map (kbd "s-c") #'org-colviewx-copy-value)
 (org-defkey org-columns-map (kbd "s-v") #'org-colviewx-paste-value)
@@ -553,7 +638,12 @@ reverse order."
 (org-defkey org-columns-map "=" #'org-columns-next-allowed-value)
 (org-defkey org-columns-map "-" #'org-columns-previous-allowed-value)
 
+;; sorting
+(org-defkey org-columns-map "^" #'org-colviewx-sort)
+(org-defkey org-columns-map [(meta down)] #'org-colviewx-sort)
+(org-defkey org-columns-map [(meta up)] #'org-colviewx-sort-reverse)
 
-(provide 'org-colview)
+
+(provide 'org-colviewx)
 
 ;;; org-colviewx.el ends here
