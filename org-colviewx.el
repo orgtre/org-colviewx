@@ -641,8 +641,8 @@ and INTERACTIVE?."
 
     (unless sorting-type
       (message
-       "Sort %s: [a]lpha  [n]umeric  [p]riority  p[r]operty  todo[o]rder  [f]unc
-               [t]ime [s]cheduled  [d]eadline  [c]reated  cloc[k]ing
+       "Sort %s: [a]lpha  [n]umeric  [p]riority  p[r]operty  todo[o]rder
+               [f]unc [t]ime [s]cheduled  [d]eadline  [c]reated  cloc[k]ing
                A/N/P/R/O/F/T/S/D/C/K means reversed:"
        what)
       (setq sorting-type (read-char-exclusive)))
@@ -809,6 +809,27 @@ and `<` is used for number-strings."
   (org-colviewx-sort t))
 
 
+(defun org-colviewx-move-subtree-down (&optional arg)
+  "Calls `org-move-subtree-down' while inhibiting read-only."
+  (interactive "p")
+  (let ((inhibit-read-only t))
+    (org-move-subtree-down arg)
+    ;; movement destroys the overlay, so recreate it
+    (org-columns--display-here
+     (save-excursion (org-columns--collect-values)))))
+
+
+(defun org-colviewx-move-subtree-up (&optional arg)
+  "Calls `org-move-subtree-up' while inhibiting read-only."
+  (interactive "p")
+  (let ((inhibit-read-only t))
+    (org-move-subtree-up arg)
+    ;; movement destroys the overlay, so recreate it
+    (org-columns--display-here
+     (save-excursion (org-columns--collect-values)))))
+
+
+
 ;; * Filtering
 
 (defun org-colviewx-filter (&optional arg)
@@ -971,6 +992,10 @@ heading after the end of the subtree, as this causes fewer issues."
 (org-defkey org-columns-map "^" #'org-colviewx-sort)
 (org-defkey org-columns-map [(meta down)] #'org-colviewx-sort)
 (org-defkey org-columns-map [(meta up)] #'org-colviewx-sort-reverse)
+(org-defkey org-columns-map [(shift meta down)]
+            #'org-colviewx-move-subtree-down)
+(org-defkey org-columns-map [(shift meta up)]
+            #'org-colviewx-move-subtree-up)
 
 
 ;; filtering
