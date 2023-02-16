@@ -331,6 +331,13 @@ sets ARG to t, while two set it to `off'."
       (setq org-colviewx-entry-folded-at-last-toggle-drawer
             h-folded-p))))
 
+(defun org-colviewx-show-all-drawers (&optional arg)
+  "Show all drawers; with ARG hide all."
+  (interactive "P")
+  (if arg
+      (org-cycle-hide-drawers 'all)
+    (org-fold-show-all '(drawers))))
+
 
 ;; ** Connected vertical divider lines
 
@@ -985,6 +992,7 @@ heading after the end of the subtree, as this causes fewer issues."
 (org-defkey org-columns-map "c" #'org-cycle)
 (org-defkey org-columns-map "C" #'org-shifttab)
 (org-defkey org-columns-map "d" #'org-colviewx-entry-toggle-drawer)
+(org-defkey org-columns-map "D" #'org-colviewx-show-all-drawers)
 (org-defkey org-columns-map "t" #'org-colviewx-toggle-top)
 
 
