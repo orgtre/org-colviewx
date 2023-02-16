@@ -40,15 +40,15 @@
 (defcustom org-columns-separator
   (propertize " " 'face
                       (list
-                       ;;:inherit 'org-level-1
-                       ;;:foreground "gray90"
+                       ;; :inherit 'org-level-1
+                       ;; :foreground "gray90"
                        :background "gray80"
                        ;; :background "#398eac"
                        ;; (face-attribute 'escape-glyph :foreground)
                        ;; :underline 'unspecified
-                       ;;:inverse-video t
+                       ;; :inverse-video t
                        :family "Arial"
-                       ;;:inherit 'variable-pitch
+                       ;; :inherit 'variable-pitch
                        ))
   "Separator to use between columns.
 
@@ -67,6 +67,11 @@ values."
   :group 'org-properties
   :type 'string)
 
+(defcustom org-colviewx-always-visible-properties nil
+  "List of properties to always show in the properties drawer.
+Properties in this list are not hidden even when using
+`org-colviewx-toggle-column-properties-visibility'."
+  :type '(repeat string))
 
 (defface org-colviewx-link
   '((t :inherit org-link
@@ -144,7 +149,8 @@ values."
   (setq-local org-use-speed-commands nil)
   ;; disable as this behaves strangely in column view:
   (setq-local org-special-ctrl-a/e (cons nil t))
-  (org-fold-core-add-folding-spec 'org-colviewx-filter '((:isearch-ignore . t)))
+  (org-fold-core-add-folding-spec 'org-colviewx-filter
+                                  '((:isearch-ignore . t)))
   ;;(org-colviewx-reveal-all 'org-colviewx-filter)
   )
 
@@ -162,8 +168,8 @@ values."
   (kill-local-variable 'org-use-speed-commands)
   (kill-local-variable 'org-special-ctrl-a/e)
   (org-colviewx-reveal-all 'org-colviewx-filter)
-  (let ((inhibit-read-only t))
-    (remove-list-of-text-properties (point-min) (point-max) (list 'display))))
+  (when org-colviewx-column-properties-hidden
+    (org-colviewx-toggle-column-properties-visibility)))
 
 
 (add-hook 'org-colviewx-hook #'org-colviewx-minor-mode)
@@ -331,12 +337,47 @@ sets ARG to t, while two set it to `off'."
       (setq org-colviewx-entry-folded-at-last-toggle-drawer
             h-folded-p))))
 
+
 (defun org-colviewx-show-all-drawers (&optional arg)
   "Show all drawers; with ARG hide all."
   (interactive "P")
   (if arg
       (org-cycle-hide-drawers 'all)
     (org-fold-show-all '(drawers))))
+
+
+(defvar-local org-colviewx-column-properties-hidden nil
+  "List of column properties currently hidden.")
+
+
+(defun org-colviewx-toggle-column-properties-visibility ()
+  "Toggle visibility of column properties.
+This is done by adding/removing properties currently displayed in
+columns to/from `org-custom-properties' and if applicable toggling
+`org-toggle-custom-properties-visibility'. Hidden properties are
+tracked in `org-colviewx-column-properties-hidden'. Properties in
+`org-colviewx-always-visible-properties' are never hidden."
+  (interactive)
+  (if org-colviewx-column-properties-hidden
+      (progn
+        (while org-colviewx-column-properties-hidden
+          (setq org-custom-properties
+                (delete (pop org-colviewx-column-properties-hidden)
+                        org-custom-properties)))
+        (when org-custom-properties-overlays
+          (org-toggle-custom-properties-visibility)))
+    (mapc (lambda (x)
+            (unless
+                (or (member (car x) org-colviewx-always-visible-properties)
+                    (member (car x) org-custom-properties))
+              (setq org-colviewx-column-properties-hidden
+                    (cons (car x) org-colviewx-column-properties-hidden))
+              (setq org-custom-properties
+                    (cons (car x) org-custom-properties))))
+          org-columns-current-fmt-compiled)
+    (when org-custom-properties-overlays
+      (org-toggle-custom-properties-visibility))
+    (org-toggle-custom-properties-visibility)))
 
 
 ;; ** Connected vertical divider lines
@@ -994,6 +1035,8 @@ heading after the end of the subtree, as this causes fewer issues."
 (org-defkey org-columns-map "d" #'org-colviewx-entry-toggle-drawer)
 (org-defkey org-columns-map "D" #'org-colviewx-show-all-drawers)
 (org-defkey org-columns-map "t" #'org-colviewx-toggle-top)
+(org-defkey org-columns-map "P"
+            #'org-colviewx-toggle-column-properties-visibility)
 
 
 ;; sorting
