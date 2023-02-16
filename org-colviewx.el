@@ -21,7 +21,7 @@
 ;;; Commentary:
 
 ;; This file contains some extensions and configuration for the column
-;; view for Org (org-colview.el).
+;; view of Org (org-colview.el).
 
 ;;; Code:
 

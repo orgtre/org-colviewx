@@ -1,0 +1,6 @@
+* org-colviewx
+
+Some extensions and configuration for the [[https://orgmode.org/manual/Column-View.html][column
+view]] of Emacs Org mode ([[https://github.com/emacs-mirror/emacs/blob/master/lisp/org/org-colview.el][org-colview.el]]).
+
+This turns column view into a proper minor mode; modernizes its visual appearance; improves and extends viewing, navigation and editing commands; adds sorting and filtering commands; plus provides some useful transformers for use with =org-columns-modify-value-for-display-function=.
