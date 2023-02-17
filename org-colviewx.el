@@ -269,9 +269,10 @@ without moving point.
 
 Unconditionally hide the top when ARG is larger than zero;
 unconditionally reveal it when ARG is smaller than zero."
-  (interactive)
+  (interactive "P")
+  (setq arg (if arg (prefix-numeric-value arg) 0))
   (if (and (> (point-min) 1)
-           (or (not arg) (< arg 0)))
+           (<= arg 0))
       (let ((revealed-lines (count-screen-lines 1 (point-min))))
         (widen)
         (save-excursion
@@ -281,16 +282,21 @@ unconditionally reveal it when ARG is smaller than zero."
                    (count-screen-lines (point) (window-start))
                    scroll-margin 2)))))
     (when (and (= (point-min) 1)
-               (or (not arg) (> arg 0)))
+               (>= arg 0))
       (narrow-to-region (save-excursion
                           (goto-char 1)
                           ;; make sure we include invisible headings in fold
-                          (let ((invisible-heading t))
-                            (while invisible-heading
-                              (re-search-forward org-outline-regexp-bol nil t)
+                          (let ((invisible-heading t)
+                                no-visible-heading)
+                            (while (and invisible-heading
+                                        (not no-visible-heading))
+                              (unless (re-search-forward
+                                       org-outline-regexp-bol
+                                       nil t)
+                                (setq no-visible-heading t))
                               (setq invisible-heading
-                                    (org-fold-core-folded-p))))
-                          (pos-bol))
+                                    (org-fold-core-folded-p)))
+                            (if no-visible-heading (point-max) (pos-bol))))
                         (point-max)))))
 
 
@@ -880,28 +886,65 @@ and `<` is used for number-strings."
 
 ;; * Filtering
 
+(defconst org-colviewx-filter-prompt
+  "Enter <, =, >, <=, >=, or <> plus NUMBER, \"STRING\", or {REGEX}.
+Entries where %s satisfies this comparison will be hidden:\n")
+
+
 (defun org-colviewx-filter (&optional arg)
-  "Filter rows by column values."
+  "Filter rows by column values.
+
+The filtering is done by calling `org-colviewx-fold-subtree' through
+`org-map-entries', where the latters match argument is by default
+constructed to require that the property shown in the column at point
+matches the first word of the property value at point, and that the
+entry is at the same level as the original one.
+
+With a numeric prefix ARG, match word number ARG of the value at point
+(where 0 matches the full value and a negative integer means count from
+the end of value).
+
+With a `\\[universal-argument]' prefix argument, prompt for a comparison \
+operator and value
+which will be used as match argument together with the current column key
+and the current entry level.
+
+With a `\\[universal-argument] \\[universal-argument]' prefix argument, \
+prompt for a full, arbitrary match argument;
+see Info node `(org) Matching tags and properties'. Custom variable
+`org-colviewx-filter-presets' can be used to provide a list of presets.
+
+The search scope is always the current buffer respecting restrictions."
   (interactive "P")
   (save-excursion
-    ;;(org-colviewx-reset-filter)
-    (let* ((word (get-char-property (point) 'org-columns-value))
+    (let* ((value (get-char-property (point) 'org-columns-value))
            (prop (get-char-property (point) 'org-columns-key))
+           (level (org-current-level))
            (match
             (cond
+             ((numberp arg)
+              (cond ((= 0 arg)
+                     (format "LEVEL=%d+%s<>{.*\\b%s\\b.*}"
+                             level prop value))
+                    ((> 0 arg)
+                     (format "LEVEL=%d+%s<>{.*\\b%s\\b.*}"
+                             level prop (nth (1- (abs arg))
+                                             (nreverse
+                                              (split-string value "[, ]+")))))
+                    (t
+                     (format "LEVEL=%d+%s<>{.*\\b%s\\b.*}"
+                             level prop (nth (1- arg)
+                                             (split-string value "[, ]+"))))))
              ((equal arg '(4))
-              (format "LEVEL=1+%s%s" prop
-                      (read-string
-                       (concat "Match part starting with "
-                               "</=/>/<=/>=/<> (with \"\" "
-                               "for string comparison):\n"))))
+              (format "LEVEL=%d+%s%s"
+                      level prop (read-string
+                                  (format org-colviewx-filter-prompt prop))))
              ((equal arg '(16))
-              (format "LEVEL=1+%s"
-                      (completing-read "Match: "
-                                       ;; (read-string "Match: ")
-                                       org-colviewx-filter-presets)))
+              (completing-read "Hide entries matching: "
+                               org-colviewx-filter-presets))
              (t
-              (format "LEVEL=1+%s<>{.*\\b%s.*}" prop word))))
+              (format "LEVEL=%d+%s<>{.*\\b%s\\b.*}"
+                      level prop (nth 0 (split-string value "[, ]+"))))))
            (top-folded (> (point-min) 1))
            (count 0))
       (when top-folded
@@ -912,15 +955,16 @@ and `<` is used for number-strings."
                        match)
       (when top-folded
         (org-colviewx-toggle-top 1))
-      (message "Folded %s entries." count))))
+      (message "Folded %s entries matching \"%s\"." count match))))
 
 
 (defun org-colviewx-fold-subtree ()
-  "Fold current subtree.
-The subtree is folded using specification org-colviewx-filter.
-It is folded such that its position when folded is at the end of the
-line before the start of the subtree and not at the beginning of the
-heading after the end of the subtree, as this causes fewer issues."
+  "Fold the current subtree.
+The subtree is folded using folding spec org-colviewx-filter,
+see `org-fold-core--specs'. It is folded such that its position when
+folded is at the end of the line before the start of the subtree and not
+at the beginning of the heading after the end of the subtree, as this
+causes fewer issues."
   (interactive)
   (org-fold-core-region (1- (org-entry-beginning-position))
                         (save-excursion (org-end-of-subtree t t) (1- (point)))
@@ -930,15 +974,16 @@ heading after the end of the subtree, as this causes fewer issues."
 (defun org-colviewx-reset-filter ()
   "Remove all filters."
   (interactive)
-  (let ((top-folded (> (point-min) 1)))
+  (let ((top-folded (> (point-min) 1))
+        (level (org-current-level)))
     (when top-folded
       (org-colviewx-toggle-top -1))
     (org-colviewx-reveal-all 'org-colviewx-filter)
     (when top-folded
-      (org-colviewx-toggle-top 1)))
-  (outline-hide-sublevels
-      (org-current-level))
-  (message "Resetting filter."))
+      (org-colviewx-toggle-top 1))
+    (when level
+      (outline-hide-sublevels level))
+    (message "Resetting filter.")))
 
 
 ;; * Editing
