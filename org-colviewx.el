@@ -252,7 +252,7 @@ Skips meta-data. With END go to last non-whitespace character instead."
 
 
 (defun org-colviewx-beginning-of-contents+ (&optional end)
-  (interactive)
+  (interactive "P")
   (org-colviewx-save-column)
   (org-colviewx-beginning-of-contents end))
 
@@ -1050,7 +1050,6 @@ heading after the end of the subtree, as this causes fewer issues."
 
 
 ;; filtering
-
 (org-defkey org-columns-map "\\" #'org-colviewx-filter)
 (org-defkey org-columns-map "|" #'org-colviewx-reset-filter)
 
@@ -1064,8 +1063,7 @@ heading after the end of the subtree, as this causes fewer issues."
 (org-defkey org-columns-map (kbd "DEL") #'org-colviewx-delete-value)
 (org-defkey org-columns-map (kbd "C-<backspace>") #'org-colviewx-cut-subtree)
 
-(org-defkey org-columns-map "i"
-            #'(lambda () (interactive) (org-insert-heading-respect-content)))
+(org-defkey org-columns-map "i" #'org-insert-heading-respect-content)
 
 (org-defkey org-columns-map "=" #'org-columns-next-allowed-value)
 (org-defkey org-columns-map "-" #'org-columns-previous-allowed-value)
