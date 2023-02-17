@@ -4,3 +4,53 @@ Some extensions and configuration for the [[https://orgmode.org/manual/Column-Vi
 view]] of Emacs Org mode ([[https://github.com/emacs-mirror/emacs/blob/master/lisp/org/org-colview.el][org-colview.el]]).
 
 This turns column view into a proper minor mode; modernizes its visual appearance; improves and extends viewing, navigation and editing commands; adds sorting and filtering commands; plus provides some useful transformers for use with =org-columns-modify-value-for-display-function=.
+
+Install as usual, for example with straight.el using =(use-package org-colviewx :straight (:repo "orgtre/org-colviewx"))= in your init.el. Then just activate column view (=M-x org-columns=) when in an Org mode buffer: all the keybindings listed below (in addition to [[https://orgmode.org/manual/Using-column-view.html][standard column view bindings]]) are active as long as the cursor is on a heading with a column view overlay.
+
+The following [[https://github.com/abo-abo/hydra][hydra]] lists the commands provided by this package and their default keybindings (note that all these bindings also work without calling the hydra, that is without the =x= prefix):
+#+begin_src elisp
+(require 'hydra)
+
+(defhydra hydra-org-colviewx (:color blue)
+  ("f" org-colviewx-forward "Forward" :column "Navigate")
+  ("<right>" org-colviewx-forward "Forward")
+  ("b" org-colviewx-backward "Backward")
+  ("<left>" org-colviewx-backward "Backward")
+  ("n" org-colviewx-next-item "Next item")
+  ("<down>" org-colviewx-next-item "Next item")
+  ("p" org-colviewx-previous-item "Previous item")
+  ("<up>" org-colviewx-previous-item "Previous item")
+  ("." org-colviewx-beginning-of-contents+ "Contents (u)")
+  ("j" org-goto "Goto")
+  
+  ("c" org-cycle "Cycle (uuu)" :column "View/sort/filter")
+  ("C" org-shifttab "Global cycle (d)")
+  ("d" org-colviewx-entry-toggle-drawer "Toggle drawer (uu)")
+  ("D" org-colviewx-show-all-drawers "Show all drawers (u)")
+  ("t" org-colviewx-toggle-top "Toggle top")
+  ("P" org-colviewx-toggle-column-properties-visibility "Toggle column props")
+  ("^" org-colviewx-sort "Sort (u)")
+  ("M-<down>" org-colviewx-sort "Sort (u)")
+  ("M-<up>" org-colviewx-sort-reverse "Sort reverse")
+  ("S-M-<down>" org-colviewx-move-subtree-down "Move subtree down (d)")
+  ("S-M-<up>" org-colviewx-move-subtree-up "Move subtree up (d)")
+  ("\\" org-colviewx-filter "Filter (uu)")
+  ("|" org-colviewx-reset-filter "Reset filter")
+
+  ("r" org-colviewx-redo-row "Redo row" :column "Edit")
+  ("e" org-colviewx-edit-value "Edit value")
+  ("s-c" org-colviewx-copy-value "Copy value")
+  ("s-v" org-colviewx-paste-value "Paste value")
+  ("C-d" org-colviewx-copy-value-from-above "Copy from above")
+  ("DEL" org-colviewx-delete-value "Delete value")
+  ("C-<backspace>" org-colviewx-cut-subtree "Cut subtree")
+  ("i" org-insert-heading-respect-content "Insert heading")
+  ("=" org-columns-next-allowed-value "Next allowed value")
+  ("-" org-columns-previous-allowed-value "Previous allowed value"))
+
+(org-defkey org-columns-map "x" #'hydra-org-colviewx/body)
+#+end_src
+
+It is recommended to add this hydra to your configuration for easy reference. Each =u= means that the command takes one universal argument (=C-u=) and =d= means it takes a numeric prefix argument.
+
+At this stage in the development cycle org-colviewx would greatly benefit if you'd test it a bit, report any issues that come up, and provide suggestions for improvement!
