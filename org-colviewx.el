@@ -73,6 +73,23 @@ Properties in this list are not hidden even when using
 `org-colviewx-toggle-column-properties-visibility'."
   :type '(repeat string))
 
+(defcustom org-colviewx-side-windows-side 'left
+  "Side on which to display side buffers.
+Used by `org-colviewx-toggle-side-buffers'."
+  :type '(choice (const left) (const top)
+                 (const right) (const bottom)))
+
+(defcustom org-colviewx-side-windows-height 18
+  "Height of side buffers when displayed at top or bottom.
+Used by `org-colviewx-show-entry-in-side-buffers'."
+  :type 'integer)
+
+(defcustom org-colviewx-side-windows-width 40
+  "Width of the side buffer showing the current entry.
+Used by `org-colviewx-show-entry-in-side-buffers'."
+  :type 'integer)
+
+
 (defface org-colviewx-link
   '((t :inherit org-link
        :underline nil))
@@ -226,20 +243,28 @@ Ensure it stays in the column view table and in the same column."
       (goto-char pos))))
 
 
-(defun org-colviewx-beginning-of-contents (&optional end)
+(defun org-colviewx-beginning-of-contents (&optional arg)
   "Go to first non-whitespace character of entry content.
-Skips meta-data. With END go to last non-whitespace character instead."
+Skips meta-data. With a `\\[universal-argument]' prefix argument go to last
+non-whitespace character instead. With a `\\[universal-argument] \ \\[universal-argument]' prefix
+argument go to last non-whitespace character in subtree."
   (interactive "P")
   (org-end-of-meta-data t)
   (if (org-at-heading-p)
       (forward-line -1)
-    (when end
-      (if (re-search-forward "[ \n]*\n\\*" nil t)
+    (cond
+     ((equal arg '(4))
+      (if (re-search-forward "[ \n\t]*\n\\*" nil t)
           (goto-char (match-beginning 0))
         (org-end-of-subtree)
-        (re-search-backward "[^ \n]")
-        (goto-char (match-end 0)))))
-  (org-fold-show-context))
+        (re-search-backward "[^ \n\t]")
+        (goto-char (match-end 0))))
+     ((equal arg '(16))
+      (org-end-of-subtree t)
+      (re-search-backward "[^ \n\t]")
+      (goto-char (match-end 0)))))
+  (when (called-interactively-p 'interactive)
+    (org-fold-show-context)))
 
 
 (defun org-colviewx-save-column (&rest _r)
@@ -251,10 +276,26 @@ Skips meta-data. With END go to last non-whitespace character instead."
     (move-to-column org-colviewx-last-column)))
 
 
-(defun org-colviewx-beginning-of-contents+ (&optional end)
+(defun org-colviewx-beginning-of-contents+ (&optional arg)
+  "Wrapper around `org-colviewx-beginning-of-contents'.
+If there is a side buffer showing the contents, first select it,
+else store the current column before moving point so that one can
+return to it later. ARG is just passed on."
   (interactive "P")
-  (org-colviewx-save-column)
-  (org-colviewx-beginning-of-contents end))
+  (let (window)
+    (if (or (and (member org-colviewx-side-windows-side '(left right))
+                 (setq window (get-buffer-window
+                               (concat (buffer-name) "::colviewx-entry"))))
+            (and (member org-colviewx-side-windows-side '(top bottom))
+                 (setq window (get-buffer-window
+                               (concat (buffer-name) "::colviewx-content")))))
+        (progn
+          (select-window window)
+          (goto-char (point-min))
+          (org-colviewx-beginning-of-contents arg))
+      (org-colviewx-save-column)
+      (funcall-interactively
+       #'org-colviewx-beginning-of-contents arg))))
 
 
 ;; * Viewing
@@ -384,6 +425,95 @@ tracked in `org-colviewx-column-properties-hidden'. Properties in
     (when org-custom-properties-overlays
       (org-toggle-custom-properties-visibility))
     (org-toggle-custom-properties-visibility)))
+
+
+(defun org-colviewx-toggle-side-windows ()
+  "Toggle side window(s) displaying current entry.
+
+Display one or two indirect buffers narrowed to the property drawer and
+content of the current entry in side windows of the current window,
+at the side given by `org-colviewx-side-windows-side'.
+
+Add advice to `org-colviewx-next-item' and `org-colviewx-previous-item'
+to update the side window(s) after they are called."
+  (interactive)
+  (if (advice-member-p #'org-colviewx-show-entry-in-side-windows
+                       'org-colviewx-next-item)
+      (let ((entry-buffer (concat (buffer-name) "::colviewx-entry"))
+            (content-buffer (concat (buffer-name) "::colviewx-content")))
+        (advice-remove 'org-colviewx-next-item
+                       #'org-colviewx-show-entry-in-side-windows)
+        (advice-remove 'org-colviewx-previous-item
+                       #'org-colviewx-show-entry-in-side-windows)
+        (when (window-with-parameter 'window-side)
+          (window-toggle-side-windows))
+        (when (get-buffer entry-buffer)
+          (kill-buffer entry-buffer))
+        (when (get-buffer content-buffer)
+          (kill-buffer content-buffer)))
+    (advice-add 'org-colviewx-next-item :after
+                #'org-colviewx-show-entry-in-side-windows)
+    (advice-add 'org-colviewx-previous-item :after
+                #'org-colviewx-show-entry-in-side-windows)
+    (org-colviewx-show-entry-in-side-windows)))
+
+
+(defun org-colviewx-show-entry-in-side-windows (&optional side)
+  "Show drawer and content of current entry in side window(s).
+
+SIDE should be one of the symbols left, top, right, or bottom;
+it defaults to `org-colviewx-side-windows-side'. When SIDE is
+top or bottom, two separate side windows are created for the entry
+drawer and content, otherwise just one side window is used.
+
+`org-colviewx-side-windows-height' and `org-colviewx-side-windows-width'
+control the size of the side window(s)."
+  (interactive)
+  (unless (buffer-base-buffer)
+    (unless side (setq side org-colviewx-side-windows-side))
+    (let ((top-or-bottom (member side '(bottom top)))
+          boe eom boc eos entry-buffer-name content-buffer-name
+          entry-buffer content-buffer)
+      (save-excursion
+        (setq boe (progn (org-back-to-heading t) (point)))
+        (setq eos (progn (org-end-of-subtree t) (point)))
+        (when top-or-bottom
+          (setq eom (progn (org-end-of-meta-data) (point)))
+          (setq boc (progn (org-colviewx-beginning-of-contents) (point)))))
+      (setq entry-buffer-name (concat (buffer-name) "::colviewx-entry"))
+      (setq entry-buffer (or (get-buffer entry-buffer-name)
+                             (make-indirect-buffer (current-buffer)
+                                                   entry-buffer-name t)))
+      (display-buffer-in-side-window
+       entry-buffer
+       `((side . ,side)
+         (slot . -1)
+         (window-width . ,org-colviewx-side-windows-width)
+         (window-height . ,org-colviewx-side-windows-height)))
+      (with-current-buffer entry-buffer
+        (narrow-to-region boe (if top-or-bottom eom eos))
+        (org-fold-show-all)
+        (org-map-entries (lambda ()
+                           (mapc #'delete-overlay
+                                 (overlays-in (pos-bol)(pos-eol)))))
+        (setq header-line-format nil)
+        (set-window-point (get-buffer-window) (point-min)))
+      (when top-or-bottom
+        (setq content-buffer-name (concat (buffer-name) "::colviewx-content"))
+        (setq content-buffer (or (get-buffer content-buffer-name)
+                                 (make-indirect-buffer (current-buffer)
+                                                       content-buffer-name t)))
+        (display-buffer-in-side-window
+         content-buffer
+         `((side . ,side)
+           (slot . 1)
+           (window-width . ,(- (window-width)
+                               org-colviewx-side-windows-width))))
+        (with-current-buffer content-buffer
+          (narrow-to-region boc eos)
+          (org-fold-show-all)
+          (setq header-line-format nil)
+          (set-window-point (get-buffer-window) (point-min)))))))
 
 
 ;; ** Connected vertical divider lines
@@ -1080,6 +1210,7 @@ causes fewer issues."
 (org-defkey org-columns-map "d" #'org-colviewx-entry-toggle-drawer)
 (org-defkey org-columns-map "D" #'org-colviewx-show-all-drawers)
 (org-defkey org-columns-map "t" #'org-colviewx-toggle-top)
+(org-defkey org-columns-map "s" #'org-colviewx-toggle-side-windows)
 (org-defkey org-columns-map "P"
             #'org-colviewx-toggle-column-properties-visibility)
 
@@ -1110,6 +1241,7 @@ causes fewer issues."
 
 (org-defkey org-columns-map "i" #'org-insert-heading-respect-content)
 
+(org-defkey org-columns-map "A" #'org-columns-edit-attributes)
 (org-defkey org-columns-map "=" #'org-columns-next-allowed-value)
 (org-defkey org-columns-map "-" #'org-columns-previous-allowed-value)
 

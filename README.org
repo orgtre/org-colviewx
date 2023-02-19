@@ -20,7 +20,7 @@ The following [[https://github.com/abo-abo/hydra][hydra]] lists the commands pro
   ("<down>" org-colviewx-next-item "Next item")
   ("p" org-colviewx-previous-item "Previous item")
   ("<up>" org-colviewx-previous-item "Previous item")
-  ("." org-colviewx-beginning-of-contents+ "Contents (u)")
+  ("." org-colviewx-beginning-of-contents+ "Contents (uu)")
   ("j" org-goto "Goto")
   
   ("c" org-cycle "Cycle (uuu)" :column "View/sort/filter")
@@ -28,6 +28,7 @@ The following [[https://github.com/abo-abo/hydra][hydra]] lists the commands pro
   ("d" org-colviewx-entry-toggle-drawer "Toggle drawer (uu)")
   ("D" org-colviewx-show-all-drawers "Show all drawers (u)")
   ("t" org-colviewx-toggle-top "Toggle top (d)")
+  ("s" org-colviewx-toggle-side-windows "Toggle side windows")
   ("P" org-colviewx-toggle-column-properties-visibility "Toggle column props")
   ("^" org-colviewx-sort "Sort (u)")
   ("M-<down>" org-colviewx-sort "Sort (u)")
@@ -45,6 +46,7 @@ The following [[https://github.com/abo-abo/hydra][hydra]] lists the commands pro
   ("DEL" org-colviewx-delete-value "Delete value")
   ("C-<backspace>" org-colviewx-cut-subtree "Cut subtree")
   ("i" org-insert-heading-respect-content "Insert heading")
+  ("A" org-columns-edit-attributes "Edit attributes")
   ("=" org-columns-next-allowed-value "Next allowed value")
   ("-" org-columns-previous-allowed-value "Previous allowed value"))
 
