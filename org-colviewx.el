@@ -245,26 +245,39 @@ Ensure it stays in the column view table and in the same column."
 
 (defun org-colviewx-beginning-of-contents (&optional arg)
   "Go to first non-whitespace character of entry content.
-Skips meta-data. With a `\\[universal-argument]' prefix argument go to last
-non-whitespace character instead. With a `\\[universal-argument] \ \\[universal-argument]' prefix
-argument go to last non-whitespace character in subtree."
+Skips meta-data. When the entry content is only meta-data and
+whitespace, go to the first subheading; but if there is no
+subheading go to the end of of the last non-meta-data line of
+entry, inserting it if necessary.
+
+With a `\\[universal-argument]' prefix argument go to last \
+non-whitespace
+character instead. With a `\\[universal-argument] \
+\\[universal-argument]' prefix argument go to
+last non-whitespace character in subtree."
   (interactive "P")
-  (org-end-of-meta-data t)
-  (if (org-at-heading-p)
-      (forward-line -1)
-    (cond
-     ((equal arg '(4))
-      (if (re-search-forward "[ \n\t]*\n\\*" nil t)
-          (goto-char (match-beginning 0))
-        (org-end-of-subtree)
+  (let ((initial-level (org-current-level)))
+    (org-end-of-meta-data t)
+    (if (and (org-at-heading-p)
+             (= initial-level (org-current-level)))
+        (progn (backward-char)
+               (when (save-excursion
+                       (backward-char)
+                       (looking-at-p "[^ \n\t]"))
+                 (newline)))
+      (cond
+       ((equal arg '(4))
+        (if (re-search-forward "[ \n\t]*\n\\*" nil t)
+            (goto-char (match-beginning 0))
+          (org-end-of-subtree)
+          (re-search-backward "[^ \n\t]")
+          (goto-char (match-end 0))))
+       ((equal arg '(16))
+        (org-end-of-subtree t)
         (re-search-backward "[^ \n\t]")
-        (goto-char (match-end 0))))
-     ((equal arg '(16))
-      (org-end-of-subtree t)
-      (re-search-backward "[^ \n\t]")
-      (goto-char (match-end 0)))))
-  (when (called-interactively-p 'interactive)
-    (org-fold-show-context)))
+        (goto-char (match-end 0)))))
+    (when (called-interactively-p 'interactive)
+      (org-fold-show-context))))
 
 
 (defun org-colviewx-save-column (&rest _r)
@@ -472,26 +485,28 @@ control the size of the side window(s)."
   (unless (buffer-base-buffer)
     (unless side (setq side org-colviewx-side-windows-side))
     (let ((top-or-bottom (member side '(bottom top)))
-          boe eom boc eos entry-buffer-name content-buffer-name
+          boe boc eos entry-buffer-name content-buffer-name
           entry-buffer content-buffer)
       (save-excursion
         (setq boe (progn (org-back-to-heading t) (point)))
-        (setq eos (progn (org-end-of-subtree t) (point)))
-        (when top-or-bottom
-          (setq eom (progn (org-end-of-meta-data) (point)))
+        (setq eos (progn (org-end-of-subtree t) (point))))
+      (when top-or-bottom
+        (save-excursion
           (setq boc (progn (org-colviewx-beginning-of-contents) (point)))))
       (setq entry-buffer-name (concat (buffer-name) "::colviewx-entry"))
       (setq entry-buffer (or (get-buffer entry-buffer-name)
                              (make-indirect-buffer (current-buffer)
-                                                   entry-buffer-name t)))
+                                                   entry-buffer-name
+                                                   t)))
       (display-buffer-in-side-window
        entry-buffer
        `((side . ,side)
          (slot . -1)
          (window-width . ,org-colviewx-side-windows-width)
-         (window-height . ,org-colviewx-side-windows-height)))
+         (window-height . ,org-colviewx-side-windows-height)
+         (preserve-size . '(t . nil))))
       (with-current-buffer entry-buffer
-        (narrow-to-region boe (if top-or-bottom eom eos))
+        (narrow-to-region boe (if top-or-bottom boc eos))
         (org-fold-show-all)
         (org-map-entries (lambda ()
                            (mapc #'delete-overlay
@@ -502,7 +517,8 @@ control the size of the side window(s)."
         (setq content-buffer-name (concat (buffer-name) "::colviewx-content"))
         (setq content-buffer (or (get-buffer content-buffer-name)
                                  (make-indirect-buffer (current-buffer)
-                                                       content-buffer-name t)))
+                                                       content-buffer-name
+                                                       t)))
         (display-buffer-in-side-window
          content-buffer
          `((side . ,side)
@@ -512,6 +528,9 @@ control the size of the side window(s)."
         (with-current-buffer content-buffer
           (narrow-to-region boc eos)
           (org-fold-show-all)
+          (org-map-entries (lambda ()
+                           (mapc #'delete-overlay
+                                 (overlays-in (pos-bol)(pos-eol)))))
           (setq header-line-format nil)
           (set-window-point (get-buffer-window) (point-min)))))))
 
