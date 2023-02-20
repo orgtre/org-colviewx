@@ -45,6 +45,7 @@ The following [[https://github.com/abo-abo/hydra][hydra]] lists the commands pro
   ("C-d" org-colviewx-copy-value-from-above "Copy from above")
   ("DEL" org-colviewx-delete-value "Delete value")
   ("C-<backspace>" org-colviewx-cut-subtree "Cut subtree")
+  ("%" org-colviewx-replace-regexp "Replace in column (u)")
   ("i" org-insert-heading-respect-content "Insert heading")
   ("A" org-columns-edit-attributes "Edit attributes")
   ("=" org-columns-next-allowed-value "Next allowed value")

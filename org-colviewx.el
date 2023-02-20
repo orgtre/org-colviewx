@@ -1185,6 +1185,65 @@ causes fewer issues."
     (org-cut-subtree)))
 
 
+(defun org-colviewx-replace-regexp (prop regexp to-string)
+  "Replace REGEXP in property values with TO-STRING.
+PROP gives the property within whose values REGEXP is matched.
+
+Search happens across the current buffer, but respects the restriction
+and ignores entries folded via `org-colviewx-filter'.
+
+When called interactively, first try reading PROP from the char property
+org-columns-key at point (which exists if point is on an org-columns
+overlay), else prompt the user for it; with a `\\[universal-argument]' \
+prefix argument
+always prompt. REGEXP and TO-STRING are always prompted from the user
+in interactive calls.
+
+Note that when providing REGEXP interactively, special characters
+have to be single quoted `\\', but when providing it directly,
+they have to be double quoted `\\\\'. TO-STRING is passed as argument
+REP to `replace-regexp-in-string' (which see).
+
+This command can also be used when column view is not active. If it is
+active, overlays are updated when necesary."
+  (interactive
+   (let* ((prop-at-point (get-char-property (point) 'org-columns-key))
+          (prop (if (or current-prefix-arg
+                        (not prop-at-point))
+                    (completing-read "Property: "
+                                     (org-buffer-property-keys))
+                  prop-at-point))
+          (regexp (query-replace-read-from
+                   (format "In property %s, replace regexp" prop) t))
+          (to-string (if (consp regexp)
+                         (prog1 (cdr regexp) (setq regexp (car regexp)))
+                       (query-replace-read-to
+                        regexp
+                        (format "In property %s, replace regexp" prop) t))))
+     (list prop regexp to-string)))
+  (save-excursion
+    (let ((column-prop-p (and org-columns-overlays
+                              (assoc (upcase prop)
+                                     org-columns-current-fmt-compiled)))
+          (count 0) match replacement)
+      (goto-char (point-min))
+      (while (re-search-forward (format "^:%s:[ \t]*\\(.*\\)$" prop) nil t)
+        (unless (org-fold-folded-p (point) 'org-colviewx-filter)
+          (setq match (match-string 1))
+          (save-match-data
+            (setq replacement (replace-regexp-in-string regexp to-string
+                                                        match t)))
+          (when (not (equal match replacement))
+            (replace-match replacement t nil nil 1)
+            (setq count (1+ count))
+            (when column-prop-p
+              (save-excursion
+                (org-back-to-heading t)
+                (org-colviewx-redo-row))))))
+      (message "Replaced matches in %d values of property %s." count prop))))
+
+
+
 ;; * Keybindings
 
 ;; navigating
@@ -1238,6 +1297,7 @@ causes fewer issues."
 (org-defkey org-columns-map (kbd "C-d") #'org-colviewx-copy-value-from-above)
 (org-defkey org-columns-map (kbd "DEL") #'org-colviewx-delete-value)
 (org-defkey org-columns-map (kbd "C-<backspace>") #'org-colviewx-cut-subtree)
+(org-defkey org-columns-map  "%" #'org-colviewx-replace-regexp)
 
 (org-defkey org-columns-map "i" #'org-insert-heading-respect-content)
 
