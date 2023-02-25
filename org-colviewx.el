@@ -73,11 +73,17 @@ Properties in this list are not hidden even when using
 `org-colviewx-toggle-column-properties-visibility'."
   :type '(repeat string))
 
-(defcustom org-colviewx-side-windows-side 'left
+(defcustom org-colviewx-side-windows-primary-side 'left
   "Side on which to display side buffers.
-Used by `org-colviewx-toggle-side-buffers'."
+Used by `org-colviewx-side-windows-setup'."
   :type '(choice (const left) (const top)
                  (const right) (const bottom)))
+
+(defcustom org-colviewx-side-windows-secondary-side 'bottom
+  "Secondary side on which to display side buffers.
+This side is used when the side windows don't fit on `org-colviewx-side-windows-primary-side'.
+See `org-colviewx-side-windows-setup'."
+  :type '(choice (const top) (const bottom)))
 
 (defcustom org-colviewx-side-windows-height 18
   "Height of side buffers when displayed at top or bottom.
@@ -88,6 +94,15 @@ Used by `org-colviewx-show-entry-in-side-buffers'."
   "Width of the side buffer showing the current entry.
 Used by `org-colviewx-show-entry-in-side-buffers'."
   :type 'integer)
+
+(defcustom org-colviewx-side-windows-extra-width 1
+  "Extra adjustment to the width required by side windows.
+Value given in pixels. This can be used to correct errors made by
+`org-colviewx-side-windows-setup'."
+  :type 'integer)
+
+(defcustom org-colviewx-side-windows-resize-frame t
+  "Whether to resize frame to make side windows fit.")
 
 
 (defface org-colviewx-link
@@ -186,7 +201,9 @@ Used by `org-colviewx-show-entry-in-side-buffers'."
   (kill-local-variable 'org-special-ctrl-a/e)
   (org-colviewx-reveal-all 'org-colviewx-filter)
   (when org-colviewx-column-properties-hidden
-    (org-colviewx-toggle-column-properties-visibility)))
+    (org-colviewx-toggle-column-properties-visibility))
+  (when org-colviewx-side-windows-current-side
+    (org-colviewx-side-windows-toggle)))
 
 
 (add-hook 'org-colviewx-hook #'org-colviewx-minor-mode)
@@ -296,10 +313,10 @@ else store the current column before moving point so that one can
 return to it later. ARG is just passed on."
   (interactive "P")
   (let (window)
-    (if (or (and (member org-colviewx-side-windows-side '(left right))
+    (if (or (and (member org-colviewx-side-windows-current-side '(left right))
                  (setq window (get-buffer-window
                                (concat (buffer-name) "::colviewx-entry"))))
-            (and (member org-colviewx-side-windows-side '(top bottom))
+            (and (member org-colviewx-side-windows-current-side '(top bottom))
                  (setq window (get-buffer-window
                                (concat (buffer-name) "::colviewx-content")))))
         (progn
@@ -440,42 +457,154 @@ tracked in `org-colviewx-column-properties-hidden'. Properties in
     (org-toggle-custom-properties-visibility)))
 
 
-(defun org-colviewx-toggle-side-windows ()
+;; ** Side windows
+
+(defvar-local org-colviewx-side-windows-current-side nil
+  "Used by `org-colviewx-side-windows-show-entry'.")
+
+(defvar-local org-colviewx-side-windows-old-text-width nil
+  "Used to reset frame after toggling off side windows.")
+
+(defvar-local org-colviewx-side-windows-old-xpos nil
+  "Used to reset frame after toggling off side windows.")
+
+(defun org-colviewx-side-windows-toggle (&optional arg)
   "Toggle side window(s) displaying current entry.
 
 Display one or two indirect buffers narrowed to the property drawer and
-content of the current entry in side windows of the current window,
-at the side given by `org-colviewx-side-windows-side'.
+content of the current entry in side windows of the current window.
+How the side windows are displayed in determined by `org-colviewx-side-windows-setup', unless called with a \ `\\[universal-argument]' prefix,
+in which case the side windows are displayed on
+`org-colviewx-side-windows-secondary-side'.
 
 Add advice to `org-colviewx-next-item' and `org-colviewx-previous-item'
 to update the side window(s) after they are called."
-  (interactive)
-  (if (advice-member-p #'org-colviewx-show-entry-in-side-windows
-                       'org-colviewx-next-item)
+  (interactive "P")
+  (if org-colviewx-side-windows-current-side
       (let ((entry-buffer (concat (buffer-name) "::colviewx-entry"))
             (content-buffer (concat (buffer-name) "::colviewx-content")))
         (advice-remove 'org-colviewx-next-item
-                       #'org-colviewx-show-entry-in-side-windows)
+                       #'org-colviewx-side-windows-show-entry)
         (advice-remove 'org-colviewx-previous-item
-                       #'org-colviewx-show-entry-in-side-windows)
+                       #'org-colviewx-side-windows-show-entry)
         (when (window-with-parameter 'window-side)
           (window-toggle-side-windows))
         (when (get-buffer entry-buffer)
           (kill-buffer entry-buffer))
         (when (get-buffer content-buffer)
-          (kill-buffer content-buffer)))
+          (kill-buffer content-buffer))
+        (when org-colviewx-side-windows-old-xpos
+          (set-frame-position nil org-colviewx-side-windows-old-xpos
+                              (cdr (frame-position)))
+          (setq org-colviewx-side-windows-old-xpos nil))
+        (when org-colviewx-side-windows-old-text-width
+          (set-frame-width nil org-colviewx-side-windows-old-text-width nil t)
+          (setq org-colviewx-side-windows-old-text-width nil))
+        (setq org-colviewx-side-windows-current-side nil))
     (advice-add 'org-colviewx-next-item :after
-                #'org-colviewx-show-entry-in-side-windows)
+                #'org-colviewx-side-windows-show-entry)
     (advice-add 'org-colviewx-previous-item :after
-                #'org-colviewx-show-entry-in-side-windows)
-    (org-colviewx-show-entry-in-side-windows)))
+                #'org-colviewx-side-windows-show-entry)
+    (if (not arg)
+        (org-colviewx-side-windows-setup)
+      (setq org-colviewx-side-windows-current-side
+            org-colviewx-side-windows-secondary-side)
+      (org-colviewx-side-windows-show-entry))))
 
 
-(defun org-colviewx-show-entry-in-side-windows (&optional side)
+(defun org-colviewx-side-windows-setup ()
+  "Transform the frame and show side windows.
+Tries to be smart about how to show the side windows.
+
+When the side window fits into the current frame without truncating or
+wrapping the columns displayed, show it in
+`org-colviewx-side-windows-primary-side'.
+
+When the side window does't fit without truncating/wrapping the columns
+displayed, `org-colviewx-side-windows-resize-frame' is non-nil,
+and the resized frame would fit on screen, resize the frame and move it
+to ensure the side window is fully displayed on screen. Else when the
+side window doesn't fit, show it either on top or below according to
+`org-colviewx-side-windows-secondary-side'. The width calculated for the
+side window can be adjusted with `org-colviewx-side-windows-extra-width'.
+
+When resizing the frame, the old frame x-position and width are stored
+in buffer-local variables and are reset when side windows are toggled
+off."
+  (let ((primary-side org-colviewx-side-windows-primary-side))
+    (if (member primary-side '(left right))
+        (let* ((columns-pxw (string-pixel-width
+                             (concat header-line-format
+                                     (or org-ellipsis "..."))))
+               (window-pxw (window-body-width nil t))
+               (available-pxw (- window-pxw columns-pxw
+                                 (when (org-colviewx-reserved-char-p)
+                                   (frame-char-width))))
+               (required-pxw (+ (* org-colviewx-side-windows-width
+                                   (frame-char-width))
+                                org-colviewx-side-windows-extra-width))
+               (required-frame-text-pxw (+ (frame-text-width)
+                                           (- required-pxw available-pxw))))
+          (cond
+           ((>= available-pxw required-pxw)
+            (setq org-colviewx-side-windows-current-side primary-side))
+           ((and org-colviewx-side-windows-resize-frame
+                 (>= (display-pixel-width)
+                     (+ required-frame-text-pxw
+                        (- (frame-outer-width)
+                           (frame-text-width)))))
+            (setq org-colviewx-side-windows-old-text-width (frame-text-width))
+            (when (equal primary-side 'left)
+              (setq org-colviewx-side-windows-old-xpos
+                    (car (frame-position)))
+              (set-frame-position nil (max 0
+                                           (- (car (frame-position))
+                                              (- required-frame-text-pxw
+                                                 (frame-text-width))))
+                                  (cdr (frame-position))))
+            (when (and (equal primary-side 'right)
+                       (> (+ (car (frame-position))
+                             (frame-outer-width)
+                             (- required-frame-text-pxw
+                                (frame-text-width)))
+                          (display-pixel-width)))
+              (setq org-colviewx-side-windows-old-xpos
+                    (car (frame-position)))
+              (set-frame-position nil (max 0
+                                           (- (display-pixel-width)
+                                              (+ required-frame-text-pxw
+                                                 (- (frame-outer-width)
+                                                    (frame-text-width)))))
+                                  (cdr (frame-position))))
+            (set-frame-width nil required-frame-text-pxw nil t)
+            (setq org-colviewx-side-windows-current-side primary-side))
+           (t
+            (setq org-colviewx-side-windows-current-side
+                  org-colviewx-side-windows-secondary-side))))
+      (setq org-colviewx-side-windows-current-side primary-side))
+    (org-colviewx-side-windows-show-entry)))
+
+
+(defun org-colviewx-reserved-char-p ()
+  "Checks whether a continuation glyph is reserved.
+Applies to current window. Extracted from `window-max-chars-per-line'"
+  (or (not (display-graphic-p))
+      (not overflow-newline-into-fringe)
+      (eq left-fringe-width 0)
+      (and (null left-fringe-width)
+           (= (frame-parameter nil 'left-fringe) 0))
+      (eq right-fringe-width 0)
+      (and (null right-fringe-width)
+           (= (frame-parameter nil 'right-fringe) 0))))
+
+
+(defun org-colviewx-side-windows-show-entry (&optional side)
   "Show drawer and content of current entry in side window(s).
 
 SIDE should be one of the symbols left, top, right, or bottom;
-it defaults to `org-colviewx-side-windows-side'. When SIDE is
+defaults default the side is determined using the value of
+`org-colviewx-side-windows-current-side' or
+`org-colviewx-side-windows-primary-side', in that order. When SIDE is
 top or bottom, two separate side windows are created for the entry
 drawer and content, otherwise just one side window is used.
 
@@ -483,7 +612,8 @@ drawer and content, otherwise just one side window is used.
 control the size of the side window(s)."
   (interactive)
   (unless (buffer-base-buffer)
-    (unless side (setq side org-colviewx-side-windows-side))
+    (unless side (setq side (or org-colviewx-side-windows-current-side
+                                org-colviewx-side-windows-primary-side)))
     (let ((top-or-bottom (member side '(bottom top)))
           boe boc eos entry-buffer-name content-buffer-name
           entry-buffer content-buffer)
@@ -529,8 +659,8 @@ control the size of the side window(s)."
           (narrow-to-region boc eos)
           (org-fold-show-all)
           (org-map-entries (lambda ()
-                           (mapc #'delete-overlay
-                                 (overlays-in (pos-bol)(pos-eol)))))
+                             (mapc #'delete-overlay
+                                   (overlays-in (pos-bol)(pos-eol)))))
           (setq header-line-format nil)
           (set-window-point (get-buffer-window) (point-min)))))))
 
@@ -1288,7 +1418,7 @@ active, overlays are updated when necesary."
 (org-defkey org-columns-map "d" #'org-colviewx-entry-toggle-drawer)
 (org-defkey org-columns-map "D" #'org-colviewx-show-all-drawers)
 (org-defkey org-columns-map "t" #'org-colviewx-toggle-top)
-(org-defkey org-columns-map "s" #'org-colviewx-toggle-side-windows)
+(org-defkey org-columns-map "s" #'org-colviewx-side-windows-toggle)
 (org-defkey org-columns-map "P"
             #'org-colviewx-toggle-column-properties-visibility)
 
