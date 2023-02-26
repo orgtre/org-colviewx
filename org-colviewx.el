@@ -73,6 +73,10 @@ Properties in this list are not hidden even when using
 `org-colviewx-toggle-column-properties-visibility'."
   :type '(repeat string))
 
+(defcustom org-colviewx-fit-and-move-frame t
+  "Whether to fit frame to the column view and move it into display."
+  :type 'bool)
+
 (defcustom org-colviewx-side-windows-primary-side 'left
   "Side on which to display side buffers.
 Used by `org-colviewx-side-windows-setup'."
@@ -184,7 +188,8 @@ Value given in pixels. This can be used to correct errors made by
   (org-fold-core-add-folding-spec 'org-colviewx-filter
                                   '((:isearch-ignore . t)))
   ;;(org-colviewx-reveal-all 'org-colviewx-filter)
-  )
+  (when org-colviewx-fit-and-move-frame
+    (org-colviewx-fit-and-move-frame)))
 
 
 (defun org-colviewx-reveal-all (spec)
@@ -455,6 +460,54 @@ tracked in `org-colviewx-column-properties-hidden'. Properties in
     (when org-custom-properties-overlays
       (org-toggle-custom-properties-visibility))
     (org-toggle-custom-properties-visibility)))
+
+
+;; ** Resize frame
+
+
+(defun org-colviewx-fit-and-move-frame ()
+  "Fit the frame to the column view and move it into display.
+The frame is moved so that its left edge is displayed and if possible
+also its right edge. Resizing and moving only happens if necessary for
+showing all columns."
+  (interactive)
+  (org-colviewx-resize-frame)
+  (org-colviewx-move-frame-into-display-horizontally))
+
+
+(defun org-colviewx-resize-frame ()
+  "Resize frame to fit the column view, if necessary."
+  (let* ((columns-pxw (string-pixel-width
+                       (concat (or header-line-format
+                                   org-columns-full-header-line-format)
+                               (or org-ellipsis "..."))))
+         (window-pxw (window-body-width nil t))
+         (frame-text-pxw (frame-text-width))
+         (new-frame-text-pxw (+ frame-text-pxw
+                                (when (org-colviewx-reserved-char-p)
+                                  (frame-char-width))
+                                (- columns-pxw window-pxw)))
+         (max-frame-text-pxw (- (display-pixel-width)
+                                (- (frame-outer-width)
+                                   frame-text-pxw)))
+         (feasible-new-frame-text-pxw (min new-frame-text-pxw
+                                           max-frame-text-pxw)))
+    (when (> feasible-new-frame-text-pxw frame-text-pxw)
+      (set-frame-width nil feasible-new-frame-text-pxw nil t))))
+
+
+(defun org-colviewx-move-frame-into-display-horizontally ()
+  "Move frame so that left/right edges are displayed.
+If frame is too large to show both edges, move it so that its
+left edge is displayed on the left display edge."
+  (let* ((pos (frame-position))
+         (width-outside (- (+ (car pos) (frame-outer-width))
+                           (display-pixel-width))))
+    (cond
+     ((> width-outside 0)
+      (set-frame-position nil (max 0 (- (car pos) width-outside)) (cdr pos)))
+     ((> 0 (car pos))
+      (set-frame-position nil 0 (cdr pos))))))
 
 
 ;; ** Side windows
@@ -1421,6 +1474,7 @@ active, overlays are updated when necesary."
 (org-defkey org-columns-map "s" #'org-colviewx-side-windows-toggle)
 (org-defkey org-columns-map "P"
             #'org-colviewx-toggle-column-properties-visibility)
+(org-defkey org-columns-map "F" #'org-colviewx-fit-and-move-frame)
 
 
 ;; sorting
