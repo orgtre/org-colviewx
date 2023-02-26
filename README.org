@@ -31,6 +31,7 @@ The following [[https://github.com/abo-abo/hydra][hydra]] lists the commands pro
   ("s" org-colviewx-side-windows-toggle "Toggle side windows (u)")
   ("P" org-colviewx-toggle-column-properties-visibility "Toggle column props")
   ("F" org-colviewx-fit-and-move-frame "Fit and move frame")
+  ("S" org-colviewx-switch-format "Switch column format")
   ("^" org-colviewx-sort "Sort (u)")
   ("M-<down>" org-colviewx-sort "Sort (u)")
   ("M-<up>" org-colviewx-sort-reverse "Sort reverse")

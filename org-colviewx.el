@@ -462,6 +462,34 @@ tracked in `org-colviewx-column-properties-hidden'. Properties in
     (org-toggle-custom-properties-visibility)))
 
 
+(defun org-colviewx-switch-format ()
+  "Switch column view format using completion.
+The select format is activated using `org-columns'.
+
+When column view is active, candidates are taken with inheritance
+from the entry at the start of the columns region by successively
+looking for properties named COLUMNS1, COLUMNS2, etc. until a nil
+value. The current and default column formats are also included.
+
+When column view is not active, only look for properties in a
+drawer at the top of the file."
+  (interactive)
+  (let ((num 1) fmts choice)
+    (org-with-wide-buffer
+     (goto-char (or (marker-position org-columns-top-level-marker)
+                    (point-min)))
+     (setq fmts (list (or org-columns-current-fmt
+                          (org-entry-get nil "COLUMNS" t))))
+     (unless (equal org-columns-default-format (car fmts))
+       (push org-columns-default-format fmts))
+     (while-let ((fmt (org-entry-get nil (format "COLUMNS%d" num) t)))
+       (push fmt fmts)
+       (setq num (1+ num))))
+    (setq choice (completing-read "Format: " fmts))
+    (org-columns-quit)
+    (org-columns nil choice)))
+
+
 ;; ** Resize frame
 
 
@@ -1475,6 +1503,7 @@ active, overlays are updated when necesary."
 (org-defkey org-columns-map "P"
             #'org-colviewx-toggle-column-properties-visibility)
 (org-defkey org-columns-map "F" #'org-colviewx-fit-and-move-frame)
+(org-defkey org-columns-map "S" #'org-colviewx-switch-format)
 
 
 ;; sorting
