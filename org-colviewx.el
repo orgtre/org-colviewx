@@ -85,7 +85,8 @@ Used by `org-colviewx-side-windows-setup'."
 
 (defcustom org-colviewx-side-windows-secondary-side 'bottom
   "Secondary side on which to display side buffers.
-This side is used when the side windows don't fit on `org-colviewx-side-windows-primary-side'.
+This side is used when the side windows don't fit on
+`org-colviewx-side-windows-primary-side'.
 See `org-colviewx-side-windows-setup'."
   :type '(choice (const top) (const bottom)))
 
@@ -106,7 +107,8 @@ Value given in pixels. This can be used to correct errors made by
   :type 'integer)
 
 (defcustom org-colviewx-side-windows-resize-frame t
-  "Whether to resize frame to make side windows fit.")
+  "Whether to resize frame to make side windows fit."
+  :type 'bool)
 
 
 (defface org-colviewx-link
@@ -134,6 +136,12 @@ Value given in pixels. This can be used to correct errors made by
 
 (defconst org-colviewx-offset 0
   "Number of columns to move right before placing overlay.")
+
+(defvar-local org-colviewx-column-properties-hidden nil
+  "List of column properties currently hidden.")
+
+(defvar-local org-colviewx-side-windows-current-side nil
+  "Used by `org-colviewx-side-windows-show-entry'.")
 
 
 ;; * org-column hooks
@@ -428,10 +436,6 @@ sets ARG to t, while two set it to `off'."
     (org-fold-show-all '(drawers))))
 
 
-(defvar-local org-colviewx-column-properties-hidden nil
-  "List of column properties currently hidden.")
-
-
 (defun org-colviewx-toggle-column-properties-visibility ()
   "Toggle visibility of column properties.
 This is done by adding/removing properties currently displayed in
@@ -540,9 +544,6 @@ left edge is displayed on the left display edge."
 
 ;; ** Side windows
 
-(defvar-local org-colviewx-side-windows-current-side nil
-  "Used by `org-colviewx-side-windows-show-entry'.")
-
 (defvar-local org-colviewx-side-windows-old-text-width nil
   "Used to reset frame after toggling off side windows.")
 
@@ -554,7 +555,9 @@ left edge is displayed on the left display edge."
 
 Display one or two indirect buffers narrowed to the property drawer and
 content of the current entry in side windows of the current window.
-How the side windows are displayed in determined by `org-colviewx-side-windows-setup', unless called with a \ `\\[universal-argument]' prefix,
+How the side windows are displayed in determined by
+`org-colviewx-side-windows-setup', unless called with a \
+`\\[universal-argument]' prefix,
 in which case the side windows are displayed on
 `org-colviewx-side-windows-secondary-side'.
 
