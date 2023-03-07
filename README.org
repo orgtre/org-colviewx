@@ -5,57 +5,14 @@ view]] of Emacs Org mode ([[https://github.com/emacs-mirror/emacs/blob/master/li
 
 This turns column view into a proper minor mode; modernizes its visual appearance; improves and extends viewing, navigation and editing commands; adds sorting and filtering commands; plus provides some useful transformers for use with =org-columns-modify-value-for-display-function=.
 
-Install as usual, for example with straight.el using =(use-package org-colviewx :straight (:repo "orgtre/org-colviewx"))= in your init.el. Then just activate column view (=M-x org-columns=) when in an Org mode buffer: all the keybindings listed below (in addition to [[https://orgmode.org/manual/Using-column-view.html][standard column view bindings]]) are active as long as the cursor is on a heading with a column view overlay.
+Install as usual, for example with straight.el using =(use-package org-colviewx :straight (:repo "orgtre/org-colviewx"))= in your init.el. Then just activate column view (=M-x org-columns=) when in an Org mode buffer: all the keybindings listed in the hydra below are active as long as the cursor is on a heading with a column view overlay.
 
-The following [[https://github.com/abo-abo/hydra][hydra]] lists the commands provided by this package and their default keybindings (note that all these bindings also work without calling the hydra, that is without the =x= prefix):
-#+begin_src elisp
-(require 'hydra)
+For an overview of the available commands and their default keybindings, org-colviewx comes with a [[https://github.com/abo-abo/hydra][hydra]] which also includes the commands provided by org-colview.el (see [[https://orgmode.org/manual/Using-column-view.html][standard column view bindings]]). The hydra is shown below. To use it call the command =org-colviewx-hydra=. It is recommended that you bind it to a key by putting something like this in your configuration:
 
-(defhydra hydra-org-colviewx (:color blue)
-  ("f" org-colviewx-forward "Forward" :column "Navigate")
-  ("<right>" org-colviewx-forward "Forward")
-  ("b" org-colviewx-backward "Backward")
-  ("<left>" org-colviewx-backward "Backward")
-  ("n" org-colviewx-next-item "Next item")
-  ("<down>" org-colviewx-next-item "Next item")
-  ("p" org-colviewx-previous-item "Previous item")
-  ("<up>" org-colviewx-previous-item "Previous item")
-  ("." org-colviewx-beginning-of-contents+ "Contents (uu)")
-  ("j" org-goto "Goto")
-  
-  ("c" org-cycle "Cycle (uuu)" :column "View/sort/filter")
-  ("C" org-shifttab "Global cycle (d)")
-  ("d" org-colviewx-entry-toggle-drawer "Toggle drawer (uu)")
-  ("D" org-colviewx-show-all-drawers "Show all drawers (u)")
-  ("t" org-colviewx-toggle-top "Toggle top (d)")
-  ("s" org-colviewx-side-windows-toggle "Toggle side windows (u)")
-  ("P" org-colviewx-toggle-column-properties-visibility "Toggle column props")
-  ("F" org-colviewx-fit-and-move-frame "Fit and move frame")
-  ("S" org-colviewx-switch-format "Switch column format")
-  ("^" org-colviewx-sort "Sort (u)")
-  ("M-<down>" org-colviewx-sort "Sort (u)")
-  ("M-<up>" org-colviewx-sort-reverse "Sort reverse")
-  ("S-M-<down>" org-colviewx-move-subtree-down "Move subtree down (d)")
-  ("S-M-<up>" org-colviewx-move-subtree-up "Move subtree up (d)")
-  ("\\" org-colviewx-filter "Filter (duu)")
-  ("|" org-colviewx-reset-filter "Reset filter")
+: (org-defkey org-columns-map "x" #'org-colviewx-hydra)
 
-  ("r" org-colviewx-redo-row "Redo row" :column "Edit")
-  ("e" org-colviewx-edit-value "Edit value")
-  ("s-c" org-colviewx-copy-value "Copy value")
-  ("s-v" org-colviewx-paste-value "Paste value")
-  ("C-d" org-colviewx-copy-value-from-above "Copy from above")
-  ("DEL" org-colviewx-delete-value "Delete value")
-  ("C-<backspace>" org-colviewx-cut-subtree "Cut subtree")
-  ("%" org-colviewx-replace-regexp "Replace in column (u)")
-  ("i" org-insert-heading-respect-content "Insert heading")
-  ("A" org-columns-edit-attributes "Edit attributes")
-  ("=" org-columns-next-allowed-value "Next allowed value")
-  ("-" org-columns-previous-allowed-value "Previous allowed value"))
+Note that all the keybindings listed in the hydra also work without calling the hydra, as long as the cursor is on a column view overlay. Each =u= means that the command takes one universal argument (=C-u=) and =n= means it takes a numeric prefix argument.
 
-(org-defkey org-columns-map "x" #'hydra-org-colviewx/body)
-#+end_src
-
-It is recommended to add this hydra to your configuration for easy reference. Each =u= means that the command takes one universal argument (=C-u=) and =d= means it takes a numeric prefix argument.
+[[./hydra-dark.png]]
 
 At this stage in the development cycle org-colviewx would greatly benefit if you'd test it a bit, report any issues that come up, and provide suggestions for improvement!

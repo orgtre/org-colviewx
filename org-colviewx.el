@@ -343,6 +343,11 @@ return to it later. ARG is just passed on."
 
 ;; * Viewing
 
+(defun org-colviewx-open-link ()
+  "TODO"
+  )
+
+
 (defun org-colviewx-toggle-top (&optional arg)
   "Toggle visibility of the top of the buffer.
 
